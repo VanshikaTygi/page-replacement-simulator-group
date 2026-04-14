@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Page Replacement Simulator — OS Memory Visualizer</title>
+  <meta name="description" content="Interactive page replacement algorithm simulator with real-time animations, liquid charts, and comparison mode. Supports FIFO, LRU, Optimal, Clock, LFU, MFU." />
+  <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- PDF Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body class="dark-theme">
+
+<!-- Particle Canvas Background -->
+<canvas id="particleCanvas" aria-hidden="true"></canvas>
+
+<!-- Nav -->
+<nav class="top-nav">
+  <div class="nav-links">
+    <a href="#inputSection">⚙ Config</a>
+    <a href="#resultsSection">📊 Simulation</a>
+    <a href="#compSection">🏆 Compare</a>
+  </div>
+  <div class="nav-actions">
+    <span class="kbd-hint" title="Keyboard shortcuts">Space: Play/Pause &nbsp;→: Next Step</span>
+    <button class="btn-icon" id="themeToggle" aria-label="Toggle theme">
+      <span class="theme-icon">☀️</span>
+    </button>
+  </div>
+</nav>
+
+<main class="app-wrapper">
+
+  <!-- Header -->
+  <header class="app-header">
+    <h1>⚡ Page Replacement Simulator</h1>
+    <p class="header-sub">Visualize OS memory management — FIFO · LRU · Optimal · Clock · LFU · MFU</p>
+  </header>
+
+  <!-- ── Input Section ─────────────────────────────────────────────────── -->
+  <section id="inputSection" class="glass-card">
+    <h2 class="section-title"><span class="icon">⚙</span> Configuration</h2>
+
+    <!-- Reference String Row -->
+    <div class="input-row">
+      <div class="input-group flex-grow">
+        <label for="referenceString">Page Reference String</label>
+        <input type="text" id="referenceString" placeholder="e.g. 7 0 1 2 0 3 0 4 2 3 0 3 2 1 2 0 1 7 0 1" autocomplete="off" />
+      </div>
+      <button class="btn btn-ghost" id="randomBtn" style="align-self:flex-end;">🎲 Random</button>
+    </div>
+
+    <!-- Frame Count + Algorithm + Mode -->
+    <div class="three-col">
+      <div class="input-group">
+        <label for="frameCount">Number of Frames</label>
+        <input type="number" id="frameCount" min="1" max="20" value="3" placeholder="3" />
+      </div>
+      <div class="input-group">
+        <label for="algorithm">Algorithm</label>
+        <select id="algorithm">
+          <option value="FIFO">FIFO — First In First Out</option>
+          <option value="LRU">LRU — Least Recently Used</option>
+          <option value="Optimal">Optimal — Belady's</option>
+          <option value="Clock">Clock — Second Chance</option>
+          <option value="LFU">LFU — Least Frequently Used</option>
+          <option value="MFU">MFU — Most Frequently Used</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label>Simulation Mode</label>
+        <div class="mode-toggle-group">
+          <button class="mode-opt active" data-mode="animated" onclick="setMode(this)">▶ Animated</button>
+          <button class="mode-opt" data-mode="instant" onclick="setMode(this)">⚡ Instant</button>
+        </div>
+        <input type="hidden" id="modeToggle" value="animated" />
+      </div>
+    </div>
+
+    <div id="errorMsg" class="error-msg" role="alert"></div>
+
+    <!-- Action Buttons -->
+    <div class="actions-row">
+      <button class="btn btn-primary" id="runBtn" style="flex:2;">▶ Run Simulation</button>
+      <button class="btn btn-secondary" id="pauseBtn" disabled>⏸ Pause</button>
+      <button class="btn btn-secondary" id="nextBtn" disabled>⏭ Next Step</button>
+      <button class="btn btn-secondary" id="resetBtn" disabled>🔁 Reset</button>
+    </div>
+
+    <!-- Speed + Compare + Export row -->
+    <div class="controls-bar" style="margin-top:0.75rem;">
+      <button class="btn btn-ghost" id="compareAllBtn">📊 Compare All Algorithms</button>
+      <button class="btn btn-ghost" id="exportCsvBtn">📥 Export CSV</button>
+      <button class="btn btn-ghost" id="exportPdfBtn">📄 Export PDF</button>
+      <div class="speed-wrap">
+        <label for="speedSelect">Speed:</label>
+        <select id="speedSelect">
+          <option value="1400">🐌 Slow</option>
+          <option value="550" selected>🚶 Normal</option>
+          <option value="130">🚀 Fast</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Results Section ───────────────────────────────────────────────── -->
+  <div id="resultsSection" class="hidden">
+
+    <!-- Stat Cards -->
+    <div class="stats-row">
+      <div class="stat-card faults">
+        <div class="stat-label">⚡ Page Faults</div>
+        <div class="stat-value" id="totalFaults">0</div>
+        <div class="stat-glow"></div>
+      </div>
+      <div class="stat-card hits">
+        <div class="stat-label">✓ Page Hits</div>
+        <div class="stat-value" id="totalHits">0</div>
+        <div class="stat-glow"></div>
+      </div>
+      <div class="stat-card ratio">
+        <div class="stat-label">📈 Hit Ratio</div>
+        <div class="stat-value" id="hitRatio">0.0%</div>
+        <div class="stat-glow"></div>
+      </div>
+    </div>
+
+    <!-- Liquid Chart + Bar Chart split -->
+    <div class="two-col" style="gap:1rem; margin-bottom:1.75rem;">
+      <div class="glass-card" style="margin-bottom:0; padding:1rem;">
+        <h3 class="section-title" style="margin-bottom:0.75rem;"><span class="icon">💧</span> Hit / Fault Ratio</h3>
+        <div class="liquid-wrap">
+          <canvas id="liquidCanvas"></canvas>
+        </div>
+        <p class="liquid-hint">Left: Hit Ratio &nbsp;|&nbsp; Right: Fault Ratio</p>
+      </div>
+      <div class="glass-card" style="margin-bottom:0; padding:1rem;">
+        <h3 class="section-title" style="margin-bottom:0.75rem;"><span class="icon">📊</span> Algorithm Comparison</h3>
+        <div class="chart-container">
+          <canvas id="comparisonChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Simulation Table -->
+    <div class="glass-card" id="tableSection">
+      <h3 class="section-title"><span class="icon">🗃</span> Step-by-Step Simulation</h3>
+      <div class="table-wrap">
+        <table id="simulationTable">
+          <thead>
+            <tr id="tableHeaderRow"></tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <p style="font-size:0.75rem; color:var(--text-muted); margin-top:0.75rem;">
+        💡 Hover over <strong style="color:var(--fault-color)">Fault</strong> badges to see replacement reasoning.
+        &nbsp;|&nbsp; Green border = Hit &nbsp;|&nbsp; Red border = Fault
+      </p>
+    </div>
+
+  </div>
+
+  <!-- ── Comparison table Section ──────────────────────────────────────── -->
+  <section id="compSection" class="glass-card hidden">
+    <h3 class="section-title"><span class="icon">🏆</span> All-Algorithm Comparison</h3>
+    <div class="table-wrap">
+      <table class="comp-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th>Algorithm</th>
+            <th>Page Faults</th>
+            <th>Page Hits</th>
+            <th>Hit Ratio</th>
+          </tr>
+        </thead>
+        <tbody id="compTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Random Generator Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="genModal" role="dialog" aria-modal="true" aria-label="Random generator settings">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>🎲 Random Page Generator</h3>
+      <button class="modal-close" id="genClose" aria-label="Close">✕</button>
+    </div>
+    <div class="input-group" style="margin-bottom:1rem;">
+      <label for="genLength">Number of References (5–60)</label>
+      <input type="number" id="genLength" min="5" max="60" value="20" />
+    </div>
+    <div class="two-col" style="margin-bottom:1.5rem;">
+      <div class="input-group">
+        <label for="genMin">Min Page Number</label>
+        <input type="number" id="genMin" min="0" max="19" value="0" />
+      </div>
+      <div class="input-group">
+        <label for="genMax">Max Page Number</label>
+        <input type="number" id="genMax" min="1" max="20" value="9" />
+      </div>
+    </div>
+    <button class="btn btn-primary" id="genApply" style="width:100%;">✨ Generate</button>
+  </div>
+</div>
+
+<!-- Mode toggle helper (pure JS, no module needed) -->
+<script>
+  function setMode(btn) {
+    document.querySelectorAll('.mode-opt').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('modeToggle').value = btn.dataset.mode;
+  }
+</script>
+
+<!-- Load Simulation Engine Files -->
+<script src="utils/helpers.js"></script>
+<script src="utils/randomGenerator.js"></script>
+<script src="algorithms/fifo.js"></script>
+<script src="algorithms/lru.js"></script>
+<script src="algorithms/optimal.js"></script>
+<script src="algorithms/clock.js"></script>
+<script src="algorithms/lfu.js"></script>
+<script src="algorithms/mfu.js"></script>
+<script src="components/particles.js"></script>
+<script src="components/simulationTable.js"></script>
+<script src="components/metrics.js"></script>
+<script src="components/charts.js"></script>
+<script src="components/liquidChart.js"></script>
+<script src="components/animations.js"></script>
+<script src="components/controls.js"></script>
+
+<!-- Main Module -->
+<script src="app.js"></script>
+
+</body>
+</html>
